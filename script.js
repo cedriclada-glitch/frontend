@@ -1,4 +1,12 @@
-const API_URL = 'https://backend-6534.onrender.com/api';
+// API URL - automatically detects environment
+const API_URL = (() => {
+    // Check if we're on localhost
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        return 'http://localhost:5000/api';
+    }
+    // Production API URL
+    return 'https://backend-6534.onrender.com/api';
+})();
 
 // Get or create session ID for cart
 function getSessionId() {
@@ -21,9 +29,22 @@ function checkAuth() {
 async function updateCartBadge() {
     try {
         const sessionId = getSessionId();
-        const response = await fetch(`${API_URL}/cart/${sessionId}`);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
         
-        if (response.ok) {
+        const response = await fetch(`${API_URL}/cart/${sessionId}`, {
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            signal: controller.signal
+        }).catch(() => {
+            clearTimeout(timeoutId);
+            return null;
+        }); // Silently fail for badge updates
+        
+        clearTimeout(timeoutId);
+        
+        if (response && response.ok) {
             const cart = await response.json();
             const totalItems = cart.items ? cart.items.reduce((sum, item) => {
                 const qty = parseInt(item.quantity) || 0;
@@ -73,13 +94,21 @@ async function addToCart(productId, productName) {
             button.innerHTML = 'Adding...';
         }
         
+        // Use AbortController for better timeout handling (AbortSignal.timeout not supported in all browsers)
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
+        
         const response = await fetch(`${API_URL}/cart/${sessionId}/items`, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
             },
-            body: JSON.stringify({ productId, quantity: 1 })
+            body: JSON.stringify({ productId, quantity: 1 }),
+            signal: controller.signal
         });
+        
+        clearTimeout(timeoutId);
 
         if (response.ok) {
             const cartData = await response.json();
@@ -721,7 +750,33 @@ async function loadCart() {
     }
     
     try {
-        const response = await fetch(`${API_URL}/cart/${sessionId}`);
+        // Add timeout and retry logic for Render backend (which may be sleeping)
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+        
+        let response;
+        let retries = 2;
+        
+        while (retries >= 0) {
+            try {
+                response = await fetch(`${API_URL}/cart/${sessionId}`, {
+                    signal: controller.signal,
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                clearTimeout(timeoutId);
+                break;
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    throw new Error('Request timeout. The server may be starting up. Please try again in a moment.');
+                }
+                retries--;
+                if (retries < 0) throw error;
+                // Wait 2 seconds before retry
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+        }
         
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
@@ -834,10 +889,19 @@ async function loadCart() {
     } catch (error) {
         console.error('Error loading cart:', error);
         if (cartContent) {
+            let errorMessage = error.message || 'Please try again later.';
+            
+            // Provide helpful messages for common issues
+            if (error.message && error.message.includes('timeout')) {
+                errorMessage = 'The server is starting up. This may take 30-60 seconds on the first request. Please wait and try again.';
+            } else if (error.message && error.message.includes('Failed to fetch')) {
+                errorMessage = 'Cannot connect to server. Please check your internet connection and ensure the backend is running.';
+            }
+            
             cartContent.innerHTML = `
                 <div style="text-align: center; padding: 3rem;">
                     <h2 style="color: #ff0066; margin-bottom: 1rem;">Error loading cart</h2>
-                    <p style="color: var(--text-gray); margin-bottom: 2rem;">${error.message || 'Please try again later.'}</p>
+                    <p style="color: var(--text-gray); margin-bottom: 2rem;">${errorMessage}</p>
                     <button onclick="loadCart()" class="btn-primary">Retry</button>
                     <a href="index.html" class="btn-secondary" style="text-decoration: none; display: inline-block; margin-left: 1rem;">Continue Shopping</a>
                 </div>
