@@ -1,11 +1,13 @@
 // API URL - automatically detects environment
 const API_URL = (() => {
-    // Check if we're on localhost
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-        return 'http://localhost:5000/api';
-    }
-    // Production API URL
-    return 'https://backend-6534.onrender.com/api';
+    const API_BASE = window.location.hostname.includes('localhost')
+    ? 'http://localhost:5000/api'
+    : 'https://https://backend-6534.onrender.com/api'; // replace with your Render domain
+  
+  // Fetch example:
+  fetch(`${API_BASE}/cart/${sessionId}`)
+    .then(res => res.json())
+    .then(data => { /* ... */ });
 })();
 
 // Get or create session ID for cart
