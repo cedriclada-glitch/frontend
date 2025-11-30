@@ -1,4 +1,4 @@
-const API_URL = 'http://localhost:5000/api';
+const API_URL = 'https://backend-6534.onrender.com/api';
 
 // Get or create session ID for cart
 function getSessionId() {
@@ -17,34 +17,61 @@ function checkAuth() {
     return { token, userRole };
 }
 
-// Update cart badge
+// Update cart badge with enhanced error handling
 async function updateCartBadge() {
     try {
         const sessionId = getSessionId();
         const response = await fetch(`${API_URL}/cart/${sessionId}`);
+        
         if (response.ok) {
             const cart = await response.json();
-            const totalItems = cart.items ? cart.items.reduce((sum, item) => sum + item.quantity, 0) : 0;
+            const totalItems = cart.items ? cart.items.reduce((sum, item) => {
+                const qty = parseInt(item.quantity) || 0;
+                return sum + qty;
+            }, 0) : 0;
+            
             const badge = document.getElementById('cartBadge');
             if (badge) {
                 badge.textContent = totalItems;
                 badge.style.display = totalItems > 0 ? 'inline-block' : 'none';
+                
+                // Add pulse animation when items are added
+                if (totalItems > 0) {
+                    badge.style.animation = 'pulse 0.5s ease';
+                    setTimeout(() => {
+                        badge.style.animation = '';
+                    }, 500);
+                }
+            }
+        } else {
+            // If cart fetch fails, hide badge
+            const badge = document.getElementById('cartBadge');
+            if (badge) {
+                badge.style.display = 'none';
             }
         }
     } catch (error) {
         console.error('Error updating cart badge:', error);
+        // Don't show error to user for badge updates
     }
 }
 
-// Add to cart with animation
+// Add to cart with enhanced animation and error handling
 async function addToCart(productId, productName) {
+    if (!productId) {
+        alert('Invalid product. Please try again.');
+        return;
+    }
+    
     const sessionId = getSessionId();
-    const button = event.target;
-    const originalText = button.innerHTML;
+    const button = event?.target;
+    const originalText = button ? button.innerHTML : 'Add to Cart';
     
     try {
-        button.disabled = true;
-        button.innerHTML = 'Adding...';
+        if (button) {
+            button.disabled = true;
+            button.innerHTML = 'Adding...';
+        }
         
         const response = await fetch(`${API_URL}/cart/${sessionId}/items`, {
             method: 'POST',
@@ -55,43 +82,78 @@ async function addToCart(productId, productName) {
         });
 
         if (response.ok) {
+            const cartData = await response.json();
+            
             // Success animation
-            button.innerHTML = '✓ Added!';
-            button.classList.add('added');
+            if (button) {
+                button.innerHTML = '✓ Added!';
+                button.classList.add('added');
+            }
             
             // Create floating animation
-            createFloatingAnimation(button, '✓ Added to Cart!');
+            if (button) {
+                createFloatingAnimation(button, '✓ Added to Cart!');
+            }
             
             // Update cart badge
             await updateCartBadge();
             
-            // Reset button after animation
+            // Show notification
+            const notification = document.createElement('div');
+            notification.className = 'cart-notification';
+            notification.innerHTML = `✓ ${productName} added to cart!`;
+            notification.style.cssText = 'position: fixed; top: 20px; right: 20px; background: linear-gradient(45deg, #00ff00, #00cc00); color: white; padding: 1rem 2rem; border-radius: 10px; z-index: 10000; animation: slideIn 0.3s ease; box-shadow: 0 5px 20px rgba(0, 255, 0, 0.5);';
+            document.body.appendChild(notification);
+            
             setTimeout(() => {
-                button.innerHTML = originalText;
-                button.classList.remove('added');
-                button.disabled = false;
+                notification.style.animation = 'slideOut 0.3s ease';
+                setTimeout(() => notification.remove(), 300);
             }, 2000);
+            
+            // Reset button after animation
+            if (button) {
+                setTimeout(() => {
+                    button.innerHTML = originalText;
+                    button.classList.remove('added');
+                    button.disabled = false;
+                }, 2000);
+            }
         } else {
             const data = await response.json();
+            const errorMsg = data.error || 'Failed to add to cart';
+            
+            if (button) {
+                button.innerHTML = 'Error';
+                button.classList.add('error');
+            }
+            
+            alert(errorMsg);
+            
+            if (button) {
+                setTimeout(() => {
+                    button.innerHTML = originalText;
+                    button.classList.remove('error');
+                    button.disabled = false;
+                }, 2000);
+            }
+        }
+    } catch (error) {
+        console.error('Error adding to cart:', error);
+        
+        if (button) {
             button.innerHTML = 'Error';
             button.classList.add('error');
-            alert(data.error || 'Failed to add to cart');
+        }
+        
+        alert(`Failed to add to cart: ${error.message || 'Please check your connection and try again.'}`);
+        
+        if (button) {
             setTimeout(() => {
                 button.innerHTML = originalText;
                 button.classList.remove('error');
                 button.disabled = false;
             }, 2000);
         }
-    } catch (error) {
-        console.error('Error adding to cart:', error);
-        button.innerHTML = 'Error';
-        button.classList.add('error');
-        alert('Failed to add to cart. Please try again.');
-        setTimeout(() => {
-            button.innerHTML = originalText;
-            button.classList.remove('error');
-            button.disabled = false;
-        }, 2000);
     }
 }
 
@@ -647,85 +709,147 @@ if (contactForm) {
     });
 }
 
-// Load cart page
+// Load cart page with enhanced error handling
 async function loadCart() {
     const sessionId = getSessionId();
+    const cartContent = document.getElementById('cartContent');
+    const checkoutSection = document.getElementById('checkoutSection');
+    
+    // Show loading state
+    if (cartContent) {
+        cartContent.innerHTML = '<div style="text-align: center; padding: 3rem;"><p style="color: var(--neon-cyan);">Loading cart...</p></div>';
+    }
+    
     try {
         const response = await fetch(`${API_URL}/cart/${sessionId}`);
-        if (!response.ok) throw new Error('Failed to load cart');
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
         
         const cart = await response.json();
-        const cartContent = document.getElementById('cartContent');
-        const checkoutSection = document.getElementById('checkoutSection');
         
-        if (!cart.items || cart.items.length === 0) {
-            cartContent.innerHTML = `
-                <div style="text-align: center; padding: 3rem;">
-                    <h2 style="color: var(--text-gray); margin-bottom: 1rem;">Your cart is empty</h2>
-                    <p style="color: var(--text-gray); margin-bottom: 2rem;">Add some products to get started!</p>
-                    <a href="index.html" class="btn-primary" style="text-decoration: none; display: inline-block;">Continue Shopping</a>
-                </div>
-            `;
-            checkoutSection.style.display = 'none';
-        } else {
-            cartContent.innerHTML = `
-                <div class="cart-items">
-                    ${cart.items.map((item, index) => {
-                        const product = item.productId;
-                        return `
-                            <div class="cart-item">
-                                <img src="${product.image || 'https://via.placeholder.com/100'}" alt="${product.name}" class="cart-item-image">
-                                <div class="cart-item-details">
-                                    <h3>${product.name}</h3>
-                                    <p class="cart-item-price">₱${parseFloat(item.price).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
-                                </div>
-                                <div class="cart-item-quantity">
-                                    <button onclick="updateCartQuantity('${item._id}', ${item.quantity - 1})" ${item.quantity <= 1 ? 'disabled' : ''}>-</button>
-                                    <span>${item.quantity}</span>
-                                    <button onclick="updateCartQuantity('${item._id}', ${item.quantity + 1})">+</button>
-                                </div>
-                                <div class="cart-item-total">
-                                    <p>₱${(item.price * item.quantity).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
-                                </div>
-                                <button class="btn-remove" onclick="removeFromCart('${item._id}')">Remove</button>
-                            </div>
-                        `;
-                    }).join('')}
-                </div>
-                <div class="cart-actions">
-                    <a href="index.html" class="btn-secondary">Continue Shopping</a>
-                </div>
-            `;
-            
-            // Show checkout section
-            checkoutSection.style.display = 'block';
-            const subtotal = cart.total || 0;
-            const tax = subtotal * 0.1;
-            const total = subtotal + tax;
-            
-            document.getElementById('subtotal').textContent = `₱${subtotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-            document.getElementById('tax').textContent = `₱${tax.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-            document.getElementById('total').textContent = `₱${total.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-            
-            // Pre-fill user info if logged in
-            const userEmail = localStorage.getItem('userEmail');
-            const userName = localStorage.getItem('userName');
-            if (userEmail) {
-                document.getElementById('customerEmail').value = userEmail;
+        // Check if cart exists and has items
+        if (!cart || !cart.items || cart.items.length === 0) {
+            if (cartContent) {
+                cartContent.innerHTML = `
+                    <div style="text-align: center; padding: 3rem;">
+                        <h2 style="color: var(--text-gray); margin-bottom: 1rem;">Your cart is empty</h2>
+                        <p style="color: var(--text-gray); margin-bottom: 2rem;">Add some products to get started!</p>
+                        <a href="index.html" class="btn-primary" style="text-decoration: none; display: inline-block;">Continue Shopping</a>
+                    </div>
+                `;
             }
-            if (userName) {
-                document.getElementById('customerName').value = userName;
+            if (checkoutSection) {
+                checkoutSection.style.display = 'none';
+            }
+        } else {
+            // Filter out items with invalid product data
+            const validItems = cart.items.filter(item => item.productId && typeof item.productId === 'object');
+            
+            if (validItems.length === 0) {
+                if (cartContent) {
+                    cartContent.innerHTML = `
+                        <div style="text-align: center; padding: 3rem;">
+                            <h2 style="color: var(--text-gray); margin-bottom: 1rem;">Your cart is empty</h2>
+                            <p style="color: var(--text-gray); margin-bottom: 2rem;">Add some products to get started!</p>
+                            <a href="index.html" class="btn-primary" style="text-decoration: none; display: inline-block;">Continue Shopping</a>
+                        </div>
+                    `;
+                }
+                if (checkoutSection) {
+                    checkoutSection.style.display = 'none';
+                }
+            } else {
+                // Render cart items with proper null checks
+                if (cartContent) {
+                    cartContent.innerHTML = `
+                        <div class="cart-items">
+                            ${validItems.map((item) => {
+                                const product = item.productId || {};
+                                const productName = product.name || 'Unknown Product';
+                                const productImage = product.image || 'https://via.placeholder.com/100';
+                                const itemPrice = parseFloat(item.price) || 0;
+                                const itemQuantity = parseInt(item.quantity) || 1;
+                                const itemTotal = itemPrice * itemQuantity;
+                                
+                                return `
+                                    <div class="cart-item">
+                                        <img src="${productImage}" alt="${productName}" class="cart-item-image" onerror="this.src='https://via.placeholder.com/100'">
+                                        <div class="cart-item-details">
+                                            <h3>${productName}</h3>
+                                            <p class="cart-item-price">₱${itemPrice.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} each</p>
+                                        </div>
+                                        <div class="cart-item-quantity">
+                                            <button onclick="updateCartQuantity('${item._id}', ${itemQuantity - 1})" ${itemQuantity <= 1 ? 'disabled' : ''}>-</button>
+                                            <span>${itemQuantity}</span>
+                                            <button onclick="updateCartQuantity('${item._id}', ${itemQuantity + 1})">+</button>
+                                        </div>
+                                        <div class="cart-item-total">
+                                            <p>₱${itemTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                                        </div>
+                                        <button class="btn-remove" onclick="removeFromCart('${item._id}')">Remove</button>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                        <div class="cart-actions">
+                            <a href="index.html" class="btn-secondary">Continue Shopping</a>
+                        </div>
+                    `;
+                }
+                
+                // Show checkout section
+                if (checkoutSection) {
+                    checkoutSection.style.display = 'block';
+                    const subtotal = cart.total || validItems.reduce((sum, item) => sum + (parseFloat(item.price) || 0) * (parseInt(item.quantity) || 1), 0);
+                    const tax = subtotal * 0.1;
+                    const total = subtotal + tax;
+                    
+                    const subtotalEl = document.getElementById('subtotal');
+                    const taxEl = document.getElementById('tax');
+                    const totalEl = document.getElementById('total');
+                    
+                    if (subtotalEl) subtotalEl.textContent = `₱${subtotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+                    if (taxEl) taxEl.textContent = `₱${tax.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+                    if (totalEl) totalEl.textContent = `₱${total.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+                    
+                    // Pre-fill user info if logged in
+                    const userEmail = localStorage.getItem('userEmail');
+                    const userName = localStorage.getItem('userName');
+                    const customerEmailInput = document.getElementById('customerEmail');
+                    const customerNameInput = document.getElementById('customerName');
+                    
+                    if (userEmail && customerEmailInput) {
+                        customerEmailInput.value = userEmail;
+                    }
+                    if (userName && customerNameInput) {
+                        customerNameInput.value = userName;
+                    }
+                }
             }
         }
         
         await updateCartBadge();
     } catch (error) {
         console.error('Error loading cart:', error);
-        document.getElementById('cartContent').innerHTML = '<p style="text-align: center; color: #ff0066;">Error loading cart. Please try again.</p>';
+        if (cartContent) {
+            cartContent.innerHTML = `
+                <div style="text-align: center; padding: 3rem;">
+                    <h2 style="color: #ff0066; margin-bottom: 1rem;">Error loading cart</h2>
+                    <p style="color: var(--text-gray); margin-bottom: 2rem;">${error.message || 'Please try again later.'}</p>
+                    <button onclick="loadCart()" class="btn-primary">Retry</button>
+                    <a href="index.html" class="btn-secondary" style="text-decoration: none; display: inline-block; margin-left: 1rem;">Continue Shopping</a>
+                </div>
+            `;
+        }
+        if (checkoutSection) {
+            checkoutSection.style.display = 'none';
+        }
     }
 }
 
-// Update cart quantity
+// Update cart quantity with enhanced feedback
 async function updateCartQuantity(itemId, quantity) {
     if (quantity <= 0) {
         await removeFromCart(itemId);
@@ -733,7 +857,16 @@ async function updateCartQuantity(itemId, quantity) {
     }
     
     const sessionId = getSessionId();
+    const button = event?.target;
+    
     try {
+        // Show loading state on button
+        if (button) {
+            button.disabled = true;
+            const originalText = button.textContent;
+            button.textContent = '...';
+        }
+        
         const response = await fetch(`${API_URL}/cart/${sessionId}/items/${itemId}`, {
             method: 'PUT',
             headers: {
@@ -745,43 +878,130 @@ async function updateCartQuantity(itemId, quantity) {
         if (response.ok) {
             await loadCart();
             await updateCartBadge();
+            
+            // Show brief success feedback
+            if (button) {
+                button.textContent = '✓';
+                setTimeout(() => {
+                    button.disabled = false;
+                    button.textContent = button.textContent === '+' ? '+' : '-';
+                }, 500);
+            }
+        } else {
+            const data = await response.json();
+            alert(data.error || 'Failed to update cart quantity');
+            if (button) {
+                button.disabled = false;
+            }
         }
     } catch (error) {
         console.error('Error updating cart:', error);
-        alert('Failed to update cart');
+        alert('Failed to update cart. Please try again.');
+        if (button) {
+            button.disabled = false;
+        }
     }
 }
 
-// Remove from cart
+// Remove from cart with enhanced feedback
 async function removeFromCart(itemId) {
     if (!confirm('Remove this item from cart?')) return;
     
     const sessionId = getSessionId();
+    const button = event?.target;
+    
     try {
+        // Show loading state
+        if (button) {
+            button.disabled = true;
+            button.textContent = 'Removing...';
+        }
+        
         const response = await fetch(`${API_URL}/cart/${sessionId}/items/${itemId}`, {
             method: 'DELETE'
         });
         
         if (response.ok) {
+            // Show success animation
+            if (button) {
+                button.textContent = '✓ Removed';
+                button.style.background = '#00ff00';
+            }
+            
             await loadCart();
             await updateCartBadge();
+            
+            // Show notification
+            const notification = document.createElement('div');
+            notification.className = 'cart-notification';
+            notification.textContent = 'Item removed from cart';
+            notification.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #ff0066; color: white; padding: 1rem 2rem; border-radius: 10px; z-index: 10000; animation: slideIn 0.3s ease;';
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.style.animation = 'slideOut 0.3s ease';
+                setTimeout(() => notification.remove(), 300);
+            }, 2000);
+        } else {
+            const data = await response.json();
+            alert(data.error || 'Failed to remove item');
+            if (button) {
+                button.disabled = false;
+                button.textContent = 'Remove';
+            }
         }
     } catch (error) {
         console.error('Error removing from cart:', error);
-        alert('Failed to remove item');
+        alert('Failed to remove item. Please try again.');
+        if (button) {
+            button.disabled = false;
+            button.textContent = 'Remove';
+        }
     }
 }
 
-// Checkout form
+// Checkout form with enhanced validation and feedback
 const checkoutForm = document.getElementById('checkoutForm');
 if (checkoutForm) {
     checkoutForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const sessionId = getSessionId();
-        const customerName = document.getElementById('customerName').value;
-        const customerEmail = document.getElementById('customerEmail').value;
+        const customerName = document.getElementById('customerName').value.trim();
+        const customerEmail = document.getElementById('customerEmail').value.trim();
+        const submitBtn = checkoutForm.querySelector('button[type="submit"]');
+        const originalBtnText = submitBtn.textContent;
+        
+        // Validation
+        if (!customerName || customerName.length < 2) {
+            alert('Please enter a valid name (at least 2 characters)');
+            return;
+        }
+        
+        if (!customerEmail || !customerEmail.includes('@')) {
+            alert('Please enter a valid email address');
+            return;
+        }
+        
+        // Disable button and show loading
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Processing...';
         
         try {
+            // First verify cart has items
+            const cartResponse = await fetch(`${API_URL}/cart/${sessionId}`);
+            if (!cartResponse.ok) {
+                throw new Error('Failed to verify cart');
+            }
+            
+            const cart = await cartResponse.json();
+            if (!cart.items || cart.items.length === 0) {
+                alert('Your cart is empty. Please add items before placing an order.');
+                submitBtn.disabled = false;
+                submitBtn.textContent = originalBtnText;
+                return;
+            }
+            
+            // Place order
             const response = await fetch(`${API_URL}/orders`, {
                 method: 'POST',
                 headers: {
@@ -792,15 +1012,39 @@ if (checkoutForm) {
             
             if (response.ok) {
                 const data = await response.json();
-                alert(`Order placed successfully! Order Number: ${data.order.orderNumber}`);
-                window.location.href = 'index.html';
+                
+                // Show success message
+                submitBtn.textContent = '✓ Order Placed!';
+                submitBtn.style.background = 'linear-gradient(45deg, #00ff00, #00cc00)';
+                
+                // Create success notification
+                const successMsg = document.createElement('div');
+                successMsg.className = 'order-success-message';
+                successMsg.innerHTML = `
+                    <div style="background: rgba(0, 255, 0, 0.2); border: 2px solid #00ff00; border-radius: 10px; padding: 2rem; text-align: center; margin: 2rem 0;">
+                        <h2 style="color: #00ff00; margin-bottom: 1rem;">✓ Order Placed Successfully!</h2>
+                        <p style="color: var(--text-light); margin-bottom: 0.5rem;"><strong>Order Number:</strong> ${data.order.orderNumber}</p>
+                        <p style="color: var(--text-light); margin-bottom: 0.5rem;"><strong>Total:</strong> ₱${parseFloat(data.order.total).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                        <p style="color: var(--text-gray); margin-top: 1rem;">Thank you for your order! You will receive a confirmation email shortly.</p>
+                    </div>
+                `;
+                checkoutForm.parentNode.insertBefore(successMsg, checkoutForm);
+                
+                // Redirect after 3 seconds
+                setTimeout(() => {
+                    window.location.href = 'index.html';
+                }, 3000);
             } else {
                 const data = await response.json();
-                alert(data.error || 'Failed to place order');
+                alert(data.error || 'Failed to place order. Please try again.');
+                submitBtn.disabled = false;
+                submitBtn.textContent = originalBtnText;
             }
         } catch (error) {
             console.error('Error placing order:', error);
-            alert('Failed to place order. Please try again.');
+            alert(`Failed to place order: ${error.message || 'Please try again.'}`);
+            submitBtn.disabled = false;
+            submitBtn.textContent = originalBtnText;
         }
     });
 }
