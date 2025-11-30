@@ -32,7 +32,7 @@ async function updateCartBadge() {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 5000);
         
-        const response = await fetch(`${API_URL}/cart/${sessionId}`, {
+        const response = await fetch(`${API_URL}/cartRoutes/${sessionId}/items`, {
             headers: {
                 'Content-Type': 'application/json'
             },
