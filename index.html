@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lada E-Commerce - Home</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="container">
+            <div class="logo">LADA</div>
+            <ul class="nav-menu">
+                <li><a href="index.html" class="active">Home</a></li>
+                <li><a href="about.html">About Us</a></li>
+                <li><a href="contact.html">Contact Us</a></li>
+                <li id="userNav" style="display: none;">
+                    <a href="#" id="userName" style="color: var(--neon-cyan);"></a>
+                </li>
+                <li><a href="login.html" id="loginLink">Login</a></li>
+                <li>
+                    <a href="cart.html" id="cartIcon" class="cart-icon">
+                        🛒 <span id="cartBadge" class="cart-badge">0</span>
+                    </a>
+                </li>
+            </ul>
+        </div>
+    </nav>
+
+    <main class="container">
+        <section class="hero">
+            <h1>Welcome to Lada E-Commerce</h1>
+            <p>Discover amazing products at unbeatable prices</p>
+        </section>
+
+        <section class="products-section">
+            <h2>Our Products</h2>
+            <div id="products-grid" class="products-grid">
+                <!-- Products will be loaded here -->
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p>&copy; 2024 Lada E-Commerce. All rights reserved.</p>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>

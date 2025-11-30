@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contact Us - Lada E-Commerce</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="container">
+            <div class="logo">LADA</div>
+            <ul class="nav-menu">
+                <li><a href="index.html">Home</a></li>
+                <li><a href="about.html">About Us</a></li>
+                <li><a href="contact.html" class="active">Contact Us</a></li>
+                <li id="userNav" style="display: none;">
+                    <a href="#" id="userName" style="color: var(--neon-cyan);"></a>
+                </li>
+                <li><a href="login.html" id="loginLink">Login</a></li>
+                <li>
+                    <a href="cart.html" id="cartIcon" class="cart-icon">
+                        🛒 <span id="cartBadge" class="cart-badge">0</span>
+                    </a>
+                </li>
+            </ul>
+        </div>
+    </nav>
+
+    <main class="container">
+        <section class="contact-section">
+            <h1>Contact Us</h1>
+            <div class="contact-content">
+                <div class="contact-info">
+                    <h2>Get in Touch</h2>
+                    <div class="info-card">
+                        <h3>📍 Location</h3>
+                        <p>Pagadian City, Bulatok</p>
+                        <p>Philippines</p>
+                        <p style="margin-top: 0.5rem; font-size: 0.9rem; color: var(--neon-cyan);">
+                            <strong>GPS Coordinates:</strong><br>
+                            Latitude: 7.8253° N<br>
+                            Longitude: 123.4370° E
+                        </p>
+                        <div class="map-container" style="margin-top: 1rem; border-radius: 10px; overflow: hidden; box-shadow: 0 5px 20px rgba(0, 255, 255, 0.3);">
+                            <iframe 
+                                src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3153.5!2d123.4370!3d7.8253!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2zN8KwNDknMzEuMSJOIDEyM8KwMjYnMTMuMiJF!5e0!3m2!1sen!2sph!4v1234567890123!5m2!1sen!2sph" 
+                                width="100%" 
+                                height="300" 
+                                style="border:0; display: block;" 
+                                allowfullscreen="" 
+                                loading="lazy" 
+                                referrerpolicy="no-referrer-when-downgrade">
+                            </iframe>
+                        </div>
+                        <a href="https://www.google.com/maps?q=7.8253,123.4370" target="_blank" class="btn-primary" style="display: inline-block; margin-top: 1rem; text-decoration: none; padding: 0.5rem 1rem; font-size: 0.9rem;">
+                            Open in Google Maps
+                        </a>
+                    </div>
+                    <div class="info-card">
+                        <h3>📧 Email</h3>
+                        <p>cedriclada@gmail.com</p>
+                    </div>
+                    <div class="info-card">
+                        <h3>📞 Phone</h3>
+                        <p>+63 946 014 9180</p>
+                    </div>
+                </div>
+                <div class="contact-form-container">
+                    <form id="contactForm" class="contact-form">
+                        <input type="text" placeholder="Your Name" required>
+                        <input type="email" placeholder="Your Email" required>
+                        <textarea placeholder="Your Message" rows="5" required></textarea>
+                        <button type="submit" class="btn-primary">Send Message</button>
+                    </form>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p>&copy; 2024 Lada E-Commerce. All rights reserved.</p>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
