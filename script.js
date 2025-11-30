@@ -113,6 +113,11 @@ async function addToCart(productId, productName) {
         if (response.ok) {
             const cartData = await response.json();
             
+            // Debug: Log cart data to verify items are being saved
+            console.log('Cart after adding item:', cartData);
+            console.log('Items in cart:', cartData.items);
+            console.log('Total items:', cartData.items ? cartData.items.length : 0);
+            
             // Success animation
             if (button) {
                 button.innerHTML = '✓ Added!';
@@ -784,8 +789,22 @@ async function loadCart() {
         
         const cart = await response.json();
         
+        // Debug logging to help diagnose issues
+        console.log('=== CART LOAD DEBUG ===');
+        console.log('Session ID:', sessionId);
+        console.log('Cart data received:', cart);
+        console.log('Cart items array:', cart.items);
+        console.log('Cart items length:', cart.items ? cart.items.length : 0);
+        if (cart.items && cart.items.length > 0) {
+            console.log('First item structure:', cart.items[0]);
+            console.log('First item productId type:', typeof cart.items[0].productId);
+            console.log('First item productId value:', cart.items[0].productId);
+        }
+        console.log('========================');
+        
         // Check if cart exists and has items
         if (!cart || !cart.items || cart.items.length === 0) {
+            console.log('Cart is empty or has no items');
             if (cartContent) {
                 cartContent.innerHTML = `
                     <div style="text-align: center; padding: 3rem;">
@@ -799,10 +818,24 @@ async function loadCart() {
                 checkoutSection.style.display = 'none';
             }
         } else {
-            // Filter out items with invalid product data
-            const validItems = cart.items.filter(item => item.productId && typeof item.productId === 'object');
+            // Process items - be more lenient with validation
+            const validItems = cart.items.filter(item => {
+                // Item is valid if it has quantity > 0
+                // Price and productId can be missing/null but we'll handle that in rendering
+                const hasQuantity = item.quantity > 0 && parseInt(item.quantity) > 0;
+                
+                if (!hasQuantity) {
+                    console.log('Item filtered out - invalid quantity:', item);
+                }
+                
+                return hasQuantity;
+            });
+            
+            console.log('Total items:', cart.items.length, 'Valid items:', validItems.length);
+            console.log('Valid items after filtering:', validItems);
             
             if (validItems.length === 0) {
+                console.log('No valid items found after filtering');
                 if (cartContent) {
                     cartContent.innerHTML = `
                         <div style="text-align: center; padding: 3rem;">
@@ -816,34 +849,76 @@ async function loadCart() {
                     checkoutSection.style.display = 'none';
                 }
             } else {
-                // Render cart items with proper null checks
+                // Render cart items - handle both populated and non-populated productId
                 if (cartContent) {
                     cartContent.innerHTML = `
                         <div class="cart-items">
                             ${validItems.map((item) => {
-                                const product = item.productId || {};
-                                const productName = product.name || 'Unknown Product';
+                                // Handle productId - could be object (populated) or string/ID
+                                let product = {};
+                                if (typeof item.productId === 'object' && item.productId !== null) {
+                                    // Product is populated (has name, image, etc.)
+                                    product = item.productId;
+                                } else if (typeof item.productId === 'string' && item.productId.length > 0) {
+                                    // ProductId is just an ID string - fetch product details
+                                    // For now, use fallback but try to fetch if possible
+                                    product = {
+                                        name: 'Product',
+                                        image: 'https://via.placeholder.com/100',
+                                        _id: item.productId
+                                    };
+                                } else {
+                                    // No productId at all - use fallback
+                                    product = {
+                                        name: 'Product',
+                                        image: 'https://via.placeholder.com/100'
+                                    };
+                                }
+                                
+                                // Get values with fallbacks
+                                const productName = product.name || 'Product';
                                 const productImage = product.image || 'https://via.placeholder.com/100';
                                 const itemPrice = parseFloat(item.price) || 0;
                                 const itemQuantity = parseInt(item.quantity) || 1;
                                 const itemTotal = itemPrice * itemQuantity;
+                                const itemId = item._id || item.id || `item-${index}`;
+                                
+                                // If we have productId but no product name, try to fetch it
+                                if (product._id && !product.name && typeof product._id === 'string') {
+                                    // Fetch product details asynchronously (don't block rendering)
+                                    fetch(`${API_URL}/products/${product._id}`)
+                                        .then(res => res.json())
+                                        .then(productData => {
+                                            // Update the product name and image in the DOM
+                                            const itemElement = document.querySelector(`[data-item-id="${itemId}"]`);
+                                            if (itemElement) {
+                                                const nameEl = itemElement.querySelector('.cart-item-details h3');
+                                                const imgEl = itemElement.querySelector('.cart-item-image');
+                                                if (nameEl && productData.name) nameEl.textContent = productData.name;
+                                                if (imgEl && productData.image) imgEl.src = productData.image;
+                                            }
+                                        })
+                                        .catch(err => console.log('Could not fetch product details:', err));
+                                }
+                                
+                                // Debug log removed for cleaner console
                                 
                                 return `
-                                    <div class="cart-item">
+                                    <div class="cart-item" data-item-id="${itemId}">
                                         <img src="${productImage}" alt="${productName}" class="cart-item-image" onerror="this.src='https://via.placeholder.com/100'">
                                         <div class="cart-item-details">
                                             <h3>${productName}</h3>
                                             <p class="cart-item-price">₱${itemPrice.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} each</p>
                                         </div>
                                         <div class="cart-item-quantity">
-                                            <button onclick="updateCartQuantity('${item._id}', ${itemQuantity - 1})" ${itemQuantity <= 1 ? 'disabled' : ''}>-</button>
+                                            <button onclick="updateCartQuantity('${itemId}', ${itemQuantity - 1})" ${itemQuantity <= 1 ? 'disabled' : ''}>-</button>
                                             <span>${itemQuantity}</span>
-                                            <button onclick="updateCartQuantity('${item._id}', ${itemQuantity + 1})">+</button>
+                                            <button onclick="updateCartQuantity('${itemId}', ${itemQuantity + 1})">+</button>
                                         </div>
                                         <div class="cart-item-total">
                                             <p>₱${itemTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
                                         </div>
-                                        <button class="btn-remove" onclick="removeFromCart('${item._id}')">Remove</button>
+                                        <button class="btn-remove" onclick="removeFromCart('${itemId}')">Remove</button>
                                     </div>
                                 `;
                             }).join('')}
