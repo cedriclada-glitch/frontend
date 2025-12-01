@@ -8,6 +8,31 @@ const API_URL = (() => {
     return 'https://backend-6534.onrender.com/api';
 })();
 
+// Test API connection
+async function testAPIConnection() {
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        
+        const response = await fetch(`${API_URL.replace('/api', '')}/health`, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            mode: 'cors',
+            credentials: 'omit',
+            signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        return response.ok;
+    } catch (error) {
+        console.warn('API connection test failed:', error);
+        return false;
+    }
+}
+
 // Get or create session ID for cart
 function getSessionId() {
     let sessionId = localStorage.getItem('sessionId');
@@ -30,15 +55,19 @@ async function updateCartBadge() {
     try {
         const sessionId = getSessionId();
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // Longer timeout for production
         
         const response = await fetch(`${API_URL}/cart/${sessionId}`, {
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
             },
+            mode: 'cors',
+            credentials: 'omit',
             signal: controller.signal
-        }).catch(() => {
+        }).catch((err) => {
             clearTimeout(timeoutId);
+            console.warn('Cart badge update failed (silent):', err);
             return null;
         }); // Silently fail for badge updates
         
@@ -65,14 +94,11 @@ async function updateCartBadge() {
                 }
             }
         } else {
-            // If cart fetch fails, hide badge
-            const badge = document.getElementById('cartBadge');
-            if (badge) {
-                badge.style.display = 'none';
-            }
+            // If cart fetch fails, don't hide badge - keep last known value
+            console.warn('Cart badge update: response not OK', response?.status);
         }
     } catch (error) {
-        console.error('Error updating cart badge:', error);
+        console.warn('Error updating cart badge (silent):', error);
         // Don't show error to user for badge updates
     }
 }
@@ -94,9 +120,11 @@ async function addToCart(productId, productName) {
             button.innerHTML = 'Adding...';
         }
         
-        // Use AbortController for better timeout handling (AbortSignal.timeout not supported in all browsers)
+        // Use AbortController for better timeout handling
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000);
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 seconds for production
+        
+        console.log('Adding to cart:', { productId, sessionId, API_URL });
         
         const response = await fetch(`${API_URL}/cart/${sessionId}/items`, {
             method: 'POST',
@@ -105,10 +133,18 @@ async function addToCart(productId, productName) {
                 'Accept': 'application/json'
             },
             body: JSON.stringify({ productId, quantity: 1 }),
+            mode: 'cors',
+            credentials: 'omit',
             signal: controller.signal
         });
         
         clearTimeout(timeoutId);
+        
+        console.log('Add to cart response:', {
+            ok: response.ok,
+            status: response.status,
+            statusText: response.statusText
+        });
 
         if (response.ok) {
             const cartData = await response.json();
@@ -214,11 +250,21 @@ function createFloatingAnimation(element, text) {
 // Load products on home page
 async function loadProducts() {
     try {
-        const response = await fetch(`${API_URL}/products`);
+        console.log('Loading products from:', API_URL);
+        const response = await fetch(`${API_URL}/products`, {
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            mode: 'cors',
+            credentials: 'omit'
+        });
+        
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
         const products = await response.json();
+        console.log('Products loaded:', products.length);
         
         const productsGrid = document.getElementById('products-grid');
         if (productsGrid) {
@@ -244,7 +290,14 @@ async function loadProducts() {
         console.error('Error loading products:', error);
         const productsGrid = document.getElementById('products-grid');
         if (productsGrid) {
-            productsGrid.innerHTML = '<p style="text-align: center; color: #ff0066; grid-column: 1 / -1;">Error loading products. Please check if the backend server is running.</p>';
+            const errorMsg = error.message && error.message.includes('fetch') 
+                ? `Cannot connect to backend server. Please check:<br>• Backend is running at ${API_URL.replace('/api', '')}<br>• CORS is properly configured<br>• Your internet connection`
+                : 'Error loading products. Please check if the backend server is running.';
+            productsGrid.innerHTML = `<div style="text-align: center; color: #ff0066; grid-column: 1 / -1; padding: 2rem;">
+                <h3>⚠️ Connection Error</h3>
+                <p>${errorMsg}</p>
+                <button onclick="loadProducts()" class="btn-primary" style="margin-top: 1rem;">Retry</button>
+            </div>`;
         }
     }
 }
@@ -755,42 +808,68 @@ async function loadCart() {
     }
     
     try {
-        // Add timeout and retry logic for Render backend (which may be sleeping)
+        // Test API connection first (for Render cold start)
+        console.log('Testing API connection...');
+        const isConnected = await testAPIConnection();
+        if (!isConnected) {
+            console.warn('API connection test failed, but continuing...');
+        }
+        
+        // Add longer timeout for Render backend (which may be sleeping - can take 30-60s)
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+        const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout for cold start
         
         let response;
-        let retries = 2;
+        let retries = 3; // More retries for production
+        let lastError;
         
         while (retries >= 0) {
             try {
+                console.log(`Fetching cart (attempt ${3 - retries + 1}/4)...`);
                 response = await fetch(`${API_URL}/cart/${sessionId}`, {
                     signal: controller.signal,
                     headers: {
-                        'Content-Type': 'application/json'
-                    }
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    mode: 'cors',
+                    credentials: 'omit'
                 });
                 clearTimeout(timeoutId);
-                break;
-            } catch (error) {
-                if (error.name === 'AbortError') {
-                    throw new Error('Request timeout. The server may be starting up. Please try again in a moment.');
+                
+                if (response.ok) {
+                    break;
+                } else {
+                    lastError = new Error(`HTTP error! status: ${response.status}`);
+                    const errorData = await response.json().catch(() => ({}));
+                    console.error('Cart fetch error:', errorData);
                 }
-                retries--;
-                if (retries < 0) throw error;
-                // Wait 2 seconds before retry
-                await new Promise(resolve => setTimeout(resolve, 2000));
+            } catch (error) {
+                lastError = error;
+                if (error.name === 'AbortError') {
+                    throw new Error('Request timeout. The server may be starting up (this can take 30-60 seconds on free tier). Please wait and try again.');
+                }
+                console.error(`Cart fetch attempt failed:`, error);
+            }
+            
+            retries--;
+            if (retries >= 0) {
+                // Wait progressively longer between retries
+                const waitTime = (3 - retries) * 2000; // 2s, 4s, 6s
+                console.log(`Retrying in ${waitTime/1000} seconds...`);
+                await new Promise(resolve => setTimeout(resolve, waitTime));
             }
         }
         
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+        if (!response || !response.ok) {
+            throw lastError || new Error(`HTTP error! status: ${response?.status || 'unknown'}`);
         }
         
         const cart = await response.json();
         
         // Debug logging to help diagnose issues
         console.log('=== CART LOAD DEBUG ===');
+        console.log('API URL:', API_URL);
         console.log('Session ID:', sessionId);
         console.log('Cart data received:', cart);
         console.log('Cart items array:', cart.items);
@@ -799,6 +878,9 @@ async function loadCart() {
             console.log('First item structure:', cart.items[0]);
             console.log('First item productId type:', typeof cart.items[0].productId);
             console.log('First item productId value:', cart.items[0].productId);
+            console.log('First item keys:', Object.keys(cart.items[0]));
+        } else {
+            console.warn('⚠️ Cart has no items!');
         }
         console.log('========================');
         
@@ -962,23 +1044,49 @@ async function loadCart() {
         
         await updateCartBadge();
     } catch (error) {
-        console.error('Error loading cart:', error);
+        console.error('❌ Error loading cart:', error);
+        console.error('Error details:', {
+            name: error.name,
+            message: error.message,
+            stack: error.stack,
+            API_URL: API_URL,
+            sessionId: sessionId
+        });
+        
         if (cartContent) {
             let errorMessage = error.message || 'Please try again later.';
+            let showRetry = true;
             
             // Provide helpful messages for common issues
             if (error.message && error.message.includes('timeout')) {
-                errorMessage = 'The server is starting up. This may take 30-60 seconds on the first request. Please wait and try again.';
-            } else if (error.message && error.message.includes('Failed to fetch')) {
-                errorMessage = 'Cannot connect to server. Please check your internet connection and ensure the backend is running.';
+                errorMessage = 'The server is starting up (Render free tier can take 30-60 seconds). Please wait and click Retry.';
+            } else if (error.message && (error.message.includes('Failed to fetch') || error.message.includes('NetworkError'))) {
+                errorMessage = `Cannot connect to backend server. Please check:<br>
+                    • Backend is running at ${API_URL.replace('/api', '')}<br>
+                    • CORS is properly configured<br>
+                    • Your internet connection is active`;
+            } else if (error.message && error.message.includes('CORS')) {
+                errorMessage = 'CORS error. Please check backend CORS configuration allows your domain.';
             }
             
             cartContent.innerHTML = `
                 <div style="text-align: center; padding: 3rem;">
-                    <h2 style="color: #ff0066; margin-bottom: 1rem;">Error loading cart</h2>
-                    <p style="color: var(--text-gray); margin-bottom: 2rem;">${errorMessage}</p>
-                    <button onclick="loadCart()" class="btn-primary">Retry</button>
-                    <a href="index.html" class="btn-secondary" style="text-decoration: none; display: inline-block; margin-left: 1rem;">Continue Shopping</a>
+                    <h2 style="color: #ff0066; margin-bottom: 1rem;">⚠️ Error loading cart</h2>
+                    <div style="color: var(--text-gray); margin-bottom: 2rem; max-width: 600px; margin-left: auto; margin-right: auto;">
+                        <p>${errorMessage}</p>
+                        <p style="margin-top: 1rem; font-size: 0.9rem; color: var(--neon-cyan);">
+                            API URL: ${API_URL}<br>
+                            Session ID: ${sessionId.substring(0, 20)}...
+                        </p>
+                    </div>
+                    <button onclick="loadCart()" class="btn-primary" style="margin-right: 1rem;">Retry</button>
+                    <a href="index.html" class="btn-secondary" style="text-decoration: none; display: inline-block;">Continue Shopping</a>
+                    <div style="margin-top: 2rem; padding: 1rem; background: rgba(255, 0, 102, 0.1); border-radius: 10px; max-width: 500px; margin-left: auto; margin-right: auto;">
+                        <p style="font-size: 0.9rem; color: var(--text-gray);">
+                            <strong>Debug Info:</strong><br>
+                            Check browser console (F12) for detailed error logs.
+                        </p>
+                    </div>
                 </div>
             `;
         }
