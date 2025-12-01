@@ -72,6 +72,19 @@
     </footer>
 
     <script src="script.js"></script>
+    <script>
+        // Debug helper - log session ID on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            const sessionId = localStorage.getItem('sessionId');
+            console.log('=== CART PAGE LOADED ===');
+            console.log('Session ID:', sessionId);
+            console.log('API URL:', window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
+                ? 'http://localhost:5000/api' 
+                : 'https://backend-6534.onrender.com/api');
+            console.log('Current URL:', window.location.href);
+            console.log('========================');
+        });
+    </script>
 </body>
 </html>
 

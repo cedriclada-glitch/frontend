@@ -871,14 +871,23 @@ async function loadCart() {
         console.log('=== CART LOAD DEBUG ===');
         console.log('API URL:', API_URL);
         console.log('Session ID:', sessionId);
-        console.log('Cart data received:', cart);
+        console.log('Response status:', response.status);
+        console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+        console.log('Cart data received:', JSON.stringify(cart, null, 2));
         console.log('Cart items array:', cart.items);
         console.log('Cart items length:', cart.items ? cart.items.length : 0);
         if (cart.items && cart.items.length > 0) {
-            console.log('First item structure:', cart.items[0]);
+            console.log('First item structure:', JSON.stringify(cart.items[0], null, 2));
             console.log('First item productId type:', typeof cart.items[0].productId);
             console.log('First item productId value:', cart.items[0].productId);
+            if (typeof cart.items[0].productId === 'object') {
+                console.log('First item productId keys:', Object.keys(cart.items[0].productId));
+                console.log('First item productId.name:', cart.items[0].productId?.name);
+                console.log('First item productId.image:', cart.items[0].productId?.image);
+            }
             console.log('First item keys:', Object.keys(cart.items[0]));
+            console.log('First item.quantity:', cart.items[0].quantity);
+            console.log('First item.price:', cart.items[0].price);
         } else {
             console.warn('⚠️ Cart has no items!');
         }
@@ -900,21 +909,44 @@ async function loadCart() {
                 checkoutSection.style.display = 'none';
             }
         } else {
-            // Process items - be more lenient with validation
-            const validItems = cart.items.filter(item => {
-                // Item is valid if it has quantity > 0
-                // Price and productId can be missing/null but we'll handle that in rendering
-                const hasQuantity = item.quantity > 0 && parseInt(item.quantity) > 0;
+            // Process items - show ALL items, just filter out ones with quantity <= 0
+            // Be VERY lenient - only filter out items with clearly invalid quantities
+            const validItems = cart.items.filter((item, idx) => {
+                const quantity = parseInt(item.quantity) || 0;
+                const isValid = quantity > 0;
                 
-                if (!hasQuantity) {
-                    console.log('Item filtered out - invalid quantity:', item);
+                if (!isValid) {
+                    console.log(`Item ${idx} filtered out - invalid quantity:`, {
+                        quantity: item.quantity,
+                        parsedQuantity: quantity,
+                        item: item
+                    });
+                } else {
+                    console.log(`Item ${idx} is VALID:`, {
+                        quantity: item.quantity,
+                        parsedQuantity: quantity,
+                        hasProductId: !!item.productId,
+                        productIdType: typeof item.productId,
+                        price: item.price
+                    });
                 }
                 
-                return hasQuantity;
+                return isValid;
             });
             
-            console.log('Total items:', cart.items.length, 'Valid items:', validItems.length);
-            console.log('Valid items after filtering:', validItems);
+            console.log('=== ITEM PROCESSING ===');
+            console.log('Total items in cart:', cart.items.length);
+            console.log('Valid items after filtering:', validItems.length);
+            console.log('Valid items details:', validItems.map(item => ({
+                id: item._id,
+                productId: item.productId,
+                productIdType: typeof item.productId,
+                quantity: item.quantity,
+                price: item.price,
+                hasProductName: item.productId?.name || 'NO NAME',
+                hasProductImage: item.productId?.image || 'NO IMAGE'
+            })));
+            console.log('========================');
             
             if (validItems.length === 0) {
                 console.log('No valid items found after filtering');
@@ -935,53 +967,105 @@ async function loadCart() {
                 if (cartContent) {
                     cartContent.innerHTML = `
                         <div class="cart-items">
-                            ${validItems.map((item) => {
+                            ${validItems.map((item, index) => {
+                                // Get item ID first
+                                const itemId = item._id || item.id || `item-${Date.now()}-${index}`;
+                                
                                 // Handle productId - could be object (populated) or string/ID
                                 let product = {};
+                                let productIdStr = '';
+                                
+                                // Debug this specific item
+                                console.log(`Processing item ${index}:`, {
+                                    itemId: itemId,
+                                    productId: item.productId,
+                                    productIdType: typeof item.productId,
+                                    quantity: item.quantity,
+                                    price: item.price
+                                });
+                                
                                 if (typeof item.productId === 'object' && item.productId !== null) {
                                     // Product is populated (has name, image, etc.)
                                     product = item.productId;
+                                    productIdStr = product._id || product.id || '';
+                                    console.log(`Item ${index}: Product is populated`, {
+                                        name: product.name,
+                                        image: product.image,
+                                        price: product.price
+                                    });
                                 } else if (typeof item.productId === 'string' && item.productId.length > 0) {
-                                    // ProductId is just an ID string - fetch product details
-                                    // For now, use fallback but try to fetch if possible
+                                    // ProductId is just an ID string
+                                    productIdStr = item.productId;
                                     product = {
-                                        name: 'Product',
-                                        image: 'https://via.placeholder.com/100',
-                                        _id: item.productId
+                                        name: 'Loading product...',
+                                        image: 'https://via.placeholder.com/100?text=Loading',
+                                        _id: productIdStr
                                     };
-                                } else {
-                                    // No productId at all - use fallback
-                                    product = {
-                                        name: 'Product',
-                                        image: 'https://via.placeholder.com/100'
-                                    };
-                                }
-                                
-                                // Get values with fallbacks
-                                const productName = product.name || 'Product';
-                                const productImage = product.image || 'https://via.placeholder.com/100';
-                                const itemPrice = parseFloat(item.price) || 0;
-                                const itemQuantity = parseInt(item.quantity) || 1;
-                                const itemTotal = itemPrice * itemQuantity;
-                                const itemId = item._id || item.id || `item-${index}`;
-                                
-                                // If we have productId but no product name, try to fetch it
-                                if (product._id && !product.name && typeof product._id === 'string') {
-                                    // Fetch product details asynchronously (don't block rendering)
-                                    fetch(`${API_URL}/products/${product._id}`)
-                                        .then(res => res.json())
+                                    console.log(`Item ${index}: ProductId is string, fetching details for:`, productIdStr);
+                                    
+                                    // Try to fetch product details asynchronously
+                                    fetch(`${API_URL}/products/${productIdStr}`, {
+                                        headers: { 'Accept': 'application/json' },
+                                        mode: 'cors'
+                                    })
+                                        .then(res => {
+                                            console.log(`Item ${index}: Product fetch response:`, res.status, res.ok);
+                                            return res.ok ? res.json() : null;
+                                        })
                                         .then(productData => {
-                                            // Update the product name and image in the DOM
+                                            if (productData) {
+                                                console.log(`Item ${index}: Product data fetched:`, productData);
+                                                // Update the product name and image in the DOM
+                                                const itemElement = document.querySelector(`[data-item-id="${itemId}"]`);
+                                                if (itemElement) {
+                                                    const nameEl = itemElement.querySelector('.cart-item-details h3');
+                                                    const imgEl = itemElement.querySelector('.cart-item-image');
+                                                    if (nameEl && productData.name) {
+                                                        nameEl.textContent = productData.name;
+                                                        console.log(`Item ${index}: Updated name to:`, productData.name);
+                                                    }
+                                                    if (imgEl && productData.image) {
+                                                        imgEl.src = productData.image;
+                                                        console.log(`Item ${index}: Updated image to:`, productData.image);
+                                                    }
+                                                }
+                                            } else {
+                                                console.log(`Item ${index}: No product data returned`);
+                                            }
+                                        })
+                                        .catch(err => {
+                                            console.error(`Item ${index}: Could not fetch product details for ${productIdStr}:`, err);
+                                            // Update to show "Product" instead of "Loading..."
                                             const itemElement = document.querySelector(`[data-item-id="${itemId}"]`);
                                             if (itemElement) {
                                                 const nameEl = itemElement.querySelector('.cart-item-details h3');
-                                                const imgEl = itemElement.querySelector('.cart-item-image');
-                                                if (nameEl && productData.name) nameEl.textContent = productData.name;
-                                                if (imgEl && productData.image) imgEl.src = productData.image;
+                                                if (nameEl) nameEl.textContent = 'Product';
                                             }
-                                        })
-                                        .catch(err => console.log('Could not fetch product details:', err));
+                                        });
+                                } else {
+                                    // No productId at all - use fallback
+                                    console.warn(`Item ${index}: No productId found, using fallback`);
+                                    product = {
+                                        name: 'Product',
+                                        image: 'https://via.placeholder.com/100?text=Product'
+                                    };
                                 }
+                                
+                                // Get values with fallbacks - ALWAYS show the item even if data is incomplete
+                                const productName = product.name || item.productId?.name || 'Product';
+                                const productImage = product.image || item.productId?.image || 'https://via.placeholder.com/100?text=Product';
+                                // Use item.price if available, otherwise try product.price
+                                const itemPrice = parseFloat(item.price) || parseFloat(product.price) || 0;
+                                const itemQuantity = parseInt(item.quantity) || 1;
+                                const itemTotal = itemPrice * itemQuantity;
+                                
+                                console.log(`Item ${index}: Final values:`, {
+                                    productName,
+                                    productImage,
+                                    itemPrice,
+                                    itemQuantity,
+                                    itemTotal
+                                });
                                 
                                 // Debug log removed for cleaner console
                                 
