@@ -948,7 +948,11 @@ async function loadCart() {
             })));
             console.log('========================');
             
-            if (validItems.length === 0) {
+            // CRITICAL: If we have items but validItems is empty, show ALL items anyway
+            // This is a safety net for Netlify issues
+            const itemsToRender = validItems.length > 0 ? validItems : (cart.items.length > 0 ? cart.items : []);
+            
+            if (itemsToRender.length === 0) {
                 console.log('No valid items found after filtering');
                 if (cartContent) {
                     cartContent.innerHTML = `
@@ -965,9 +969,10 @@ async function loadCart() {
             } else {
                 // Render cart items - handle both populated and non-populated productId
                 if (cartContent) {
+                    console.log(`🎨 RENDERING ${itemsToRender.length} ITEMS TO DOM`);
                     cartContent.innerHTML = `
                         <div class="cart-items">
-                            ${validItems.map((item, index) => {
+                            ${itemsToRender.map((item, index) => {
                                 // Get item ID first
                                 const itemId = item._id || item.id || `item-${Date.now()}-${index}`;
                                 
@@ -1093,12 +1098,36 @@ async function loadCart() {
                             <a href="index.html" class="btn-secondary">Continue Shopping</a>
                         </div>
                     `;
+                    console.log('✅ Cart HTML rendered successfully');
+                    // Verify the items are actually in the DOM
+                    setTimeout(() => {
+                        const renderedItems = document.querySelectorAll('.cart-item');
+                        console.log(`🔍 DOM Check: Found ${renderedItems.length} cart items in DOM`);
+                        if (renderedItems.length === 0 && itemsToRender.length > 0) {
+                            console.error('❌ CRITICAL: Items should be rendered but DOM is empty!');
+                            console.error('Items to render:', itemsToRender);
+                            // Force render with minimal HTML as fallback
+                            cartContent.innerHTML = `
+                                <div class="cart-items">
+                                    ${itemsToRender.map((item, idx) => `
+                                        <div class="cart-item" style="border: 2px solid red; padding: 1rem; margin: 1rem 0;">
+                                            <p><strong>Item ${idx + 1}</strong></p>
+                                            <p>Quantity: ${item.quantity || 'N/A'}</p>
+                                            <p>Price: ₱${(parseFloat(item.price) || 0).toFixed(2)}</p>
+                                            <p>Product ID: ${item.productId?._id || item.productId || 'N/A'}</p>
+                                            <p>Product Name: ${item.productId?.name || 'Unknown Product'}</p>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            `;
+                        }
+                    }, 100);
                 }
                 
                 // Show checkout section
                 if (checkoutSection) {
                     checkoutSection.style.display = 'block';
-                    const subtotal = cart.total || validItems.reduce((sum, item) => sum + (parseFloat(item.price) || 0) * (parseInt(item.quantity) || 1), 0);
+                    const subtotal = cart.total || itemsToRender.reduce((sum, item) => sum + (parseFloat(item.price) || 0) * (parseInt(item.quantity) || 1), 0);
                     const tax = subtotal * 0.1;
                     const total = subtotal + tax;
                     
